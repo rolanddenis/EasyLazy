@@ -1,0 +1,340 @@
+#pragma once
+
+#include <type_traits>
+#include <utility>
+#include <array>
+#include <tuple>
+#include <iostream>
+#include <vector>
+#include <algorithm>
+#include <cassert>
+
+///////////////////////////////////////////////////////////////////////////////
+// Tools
+///////////////////////////////////////////////////////////////////////////////
+
+namespace {
+    template <typename Visitor, typename Args, std::size_t... I>
+    auto dispatch_visitor_impl(Visitor && visitor, Args && args, std::index_sequence<I...>)
+    {
+        return std::tuple<decltype(std::get<I>(args)(visitor))...>{ std::get<I>(args)(visitor) ... };
+    }
+}
+
+/// Dispatch visitor on operands
+template <typename Visitor, typename Args>
+auto dispatch_visitor(Visitor && visitor, Args && args)
+{
+    return dispatch_visitor_impl(
+        std::forward<Visitor>(visitor),
+        std::forward<Args>(args),
+        std::make_index_sequence<std::tuple_size<typename std::decay<Args>::type>::value>{}
+    );
+}
+
+/// Hold operands in a appropriate way (copy or ref) in a tuple
+template <typename... Args>
+auto hold_args(Args &&... args)
+{
+   return std::tuple<Args...>{ std::forward<Args>(args)... };
+}
+
+/// Calculate array size from its shape
+template <typename... Sizes>
+std::size_t shape_to_size(Sizes const&... sizes)
+{
+    return (sizes * ... * 1);
+}
+
+namespace {
+    template <typename T, std::size_t N, std::size_t... I>
+    std::size_t shape_to_size_impl(std::array<T, N> const& shape, std::index_sequence<I...>)
+    {
+        return shape_to_size(std::get<I>(shape)...);
+    }
+}
+
+/// Calculate array size from its shape
+template <typename T, std::size_t N>
+std::size_t shape_to_size(std::array<T, N> const& shape)
+{
+    return shape_to_size_impl(shape, std::make_index_sequence<N>{});
+}
+
+/// Calculate the dimension of the result after applying broadcasting rules
+template <std::size_t... N>
+auto broadcast_dim(std::size_t i, std::array<std::size_t, N> const&... shapes)
+{
+    const std::size_t dim = std::max({ i < shapes.size() ? shapes[i] : 0 ... });
+    assert( ((i >= shapes.size() || shapes[i] == dim || shapes[i] == 1) && ... && true) && "Invalid broadcast" );
+    return dim;
+}
+
+namespace {
+    template <std::size_t... N, std::size_t... I>
+    auto broadcast_shape_impl(std::index_sequence<I...>, std::array<std::size_t, N> const&... shapes)
+    {
+        return std::array<std::size_t, sizeof...(I)>{ broadcast_dim(I, shapes...)... };
+    }
+}
+
+/// Calculate the shape of the result after applying broadcasting rules
+template <std::size_t... N>
+auto broadcast_shape(std::array<std::size_t, N> const&... shapes)
+{
+    return broadcast_shape_impl(std::make_index_sequence<std::max({N...})>{}, shapes...);
+}
+
+namespace {
+    template <typename Shapes, std::size_t... I>
+    auto broadcast_shape_impl(Shapes const& shapes, std::index_sequence<I...>)
+    {
+        return broadcast_shape(std::get<I>(shapes)...);
+    }
+}
+
+/// Calculate the shape of the result after applying broadcasting rules
+template <typename... Shapes>
+auto broadcast_shape(std::tuple<Shapes...> const& shapes)
+{
+    return broadcast_shape_impl(shapes, std::make_index_sequence<sizeof...(Shapes)>{});
+}
+
+/// Calculate position in container from nD index
+template <std::size_t NS, std::size_t NI>
+std::size_t idx_to_pos(std::array<std::size_t, NS> const& shape, std::array<std::size_t, NI> const& idx)
+{
+    std::size_t pos = 0;
+    // Should be unrolled
+    for (std::size_t i = 0; i < std::min(NS, NI); ++i)
+    {
+        assert((shape[i] == 1 || idx[i] < shape[i]) && "Invalid index");
+        pos = pos * shape[i] + std::min(shape[i]-1, idx[i]);
+    }
+    return pos;
+}
+
+namespace {
+    template <typename Container>
+    auto check_array_size_impl(Container const& container, std::size_t expected_size, int)
+        -> decltype(std::size(container), true)
+    {
+        return std::size(container) >= expected_size;
+    }
+
+    template <typename Container>
+    bool check_array_size_impl(Container const&, std::size_t, double)
+    {
+        return true;
+    }
+}
+
+/// Check that given container has a minimal size (if possible)
+template <typename Container>
+bool check_array_size(Container const& container, std::size_t expected_size)
+{
+    return check_array_size_impl(container, expected_size, int(0));
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// Expression nodes
+///////////////////////////////////////////////////////////////////////////////
+
+
+/// Expression tag
+struct expr_tag {};
+
+/// Constant value tag
+struct cst_tag : expr_tag {};
+
+/// Constant value expression
+template <typename T>
+auto cst(T value)
+{
+    return [=] (auto && visitor) -> decltype(auto) {
+        return std::forward<decltype(visitor)>(visitor)(cst_tag{}, value);
+    };
+}
+
+/// Array tag
+struct array_tag : expr_tag {};
+
+/// Array expression
+template <typename Container, typename... Sizes>
+auto array(Container && container, Sizes const& ... sizes)
+{
+    assert(check_array_size(container, shape_to_size(sizes...)) && "Container is too small for given shape");
+    return [op = hold_args(std::forward<Container>(container)),
+            shape = std::array<std::size_t, sizeof...(Sizes)>{static_cast<std::size_t>(sizes)...}]
+           (auto && visitor) mutable -> decltype(auto) {
+               return std::forward<decltype(visitor)>(visitor)(array_tag{}, std::get<0>(op), shape);
+           };
+}
+
+
+/// Operations tag
+struct op_tag : expr_tag {};
+
+/// Binary operations expressions
+#define BINARY_OP(name, tag)            \
+struct tag : op_tag {};                 \
+template <typename LHS, typename RHS>   \
+auto name(LHS && lhs, RHS && rhs)       \
+{                                       \
+    return                              \
+        [operands = hold_args(std::forward<LHS>(lhs), std::forward<RHS>(rhs))] \
+        (auto && visitor) mutable -> decltype(auto) { \
+            return std::forward<decltype(visitor)>(visitor)(tag{}, dispatch_visitor(visitor, operands));  \
+        };                              \
+}                                       \
+
+BINARY_OP(plus,         plus_tag)
+BINARY_OP(minus,        minus_tag)
+BINARY_OP(multiplies,   multiplies_tag)
+BINARY_OP(divides,      divides_tag)
+// TODO: pow, sqrt, max, min, ...
+// TODO: cast, round, floor, ...
+
+
+///////////////////////////////////////////////////////////////////////////////
+// Visitors
+///////////////////////////////////////////////////////////////////////////////
+namespace visitor
+{
+
+/// Get shape of the expression
+struct shape
+{
+    /// Shape of a constant value
+    template <typename T>
+    auto operator() (cst_tag, T) const
+    {
+        return std::array<std::size_t, 1>{1};
+    }
+
+    /// Shape of an array
+    template <typename D, typename S>
+    auto operator() (array_tag, D, S const& s) const
+    {
+        return s;
+    }
+
+    /// Shape of the result of an operation
+    template <typename Args>
+    auto operator() (op_tag, Args const& shapes) const
+    {
+        return broadcast_shape(shapes);
+    }
+
+    /// Calling extension of shape visitor
+    template <typename Tag, typename... Args>
+    auto operator() (Tag tag, Args &&... args) const
+        -> decltype(visit(*this, tag, std::forward<Args>(args)...)) // So that SFINAE works here
+    {
+        return visit(*this, tag, std::forward<Args>(args)...);
+    }
+};
+
+/// Evaluate expression at given index
+template <std::size_t N>
+struct evaluator
+{
+    std::array<std::size_t, N> idx; ///< Indexes
+
+    /// Evaluation of a constant value
+    template <typename T>
+    auto operator() (cst_tag, T value ) const
+    {
+        return value;
+    }
+
+    /// Evaluation of an array
+    template <typename D, typename S>
+    auto operator() (array_tag, D & d, S const& s) const -> decltype(auto)
+    {
+        return d[idx_to_pos(s, idx)];
+    }
+
+    /// Evaluation of binary operations
+#define EVALUATOR_BINARY_OP(tag, op) \
+    template <typename Args> auto operator() (tag, Args const& args) { return std::get<0>(args) op std::get<1>(args); }
+
+    EVALUATOR_BINARY_OP(plus_tag, +)
+    EVALUATOR_BINARY_OP(minus_tag, -)
+    EVALUATOR_BINARY_OP(multiplies_tag, *)
+    EVALUATOR_BINARY_OP(divides_tag, /)
+
+    // Calling extension of evaluator visitor
+    template <typename Tag, typename... Args>
+    auto operator() (Tag tag, Args &&... args) const
+        -> decltype(visit(*this, tag, std::forward<Args>(args)...)) // So that SFINAE works here
+    {
+        return visit(*this, tag, std::forward<Args>(args)...);
+    }
+};
+
+/// Deduction guide for evaluator.
+template <typename... I>
+evaluator(I const&... i) -> evaluator<sizeof...(I)>;
+
+} // namespace visitor
+
+///////////////////////////////////////////////////////////////////////////////
+// Type traits
+///////////////////////////////////////////////////////////////////////////////
+namespace type_traits
+{
+
+/// Fake visitor used to check if something is an expression
+struct expr_probe
+{
+    struct success {};
+
+    template <typename Tag, typename... T, typename = std::enable_if_t<std::is_base_of<expr_tag, typename std::decay<Tag>::type>::value> >
+    auto operator() (Tag &&, T...) { return success{}; }
+
+    template <typename... T>    auto operator() (T...) { return false; }
+};
+
+/// true if the given argument is an expression
+template <typename Expr, typename = void>
+constexpr bool is_expr_v = false;
+
+template <typename Expr>
+constexpr bool is_expr_v<Expr, std::void_t<std::invoke_result_t<Expr, expr_probe>>> = std::is_same_v<expr_probe::success, std::decay_t<std::invoke_result_t<Expr, expr_probe>>>;
+
+template <typename Expr>
+constexpr auto is_expr(Expr &&)
+{
+    return is_expr_v<Expr>;
+}
+
+/// Dimension of an expression
+template <typename Expr, typename = void>
+constexpr std::size_t dim_v = 0;
+
+template <typename Expr>
+constexpr std::size_t dim_v<Expr, std::void_t<std::invoke_result_t<Expr, visitor::shape>>> = std::tuple_size<std::decay_t<std::invoke_result_t<Expr, visitor::shape>>>::value;
+
+template <typename Expr>
+constexpr std::size_t dim(Expr &&)
+{
+    return dim_v<Expr>;
+}
+
+} // type_traits
+
+///////////////////////////////////////////////////////////////////////////////
+// Additional tools
+///////////////////////////////////////////////////////////////////////////////
+
+/// Transform constants using cst
+template <typename Expr>
+auto make_it_expr(Expr && expr) -> decltype(auto)
+{
+    if constexpr (type_traits::is_expr_v<Expr>)
+        return std::forward<Expr>(expr);
+    else
+        return cst(std::forward<Expr>(expr));
+}
+

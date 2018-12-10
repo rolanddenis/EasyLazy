@@ -1,0 +1,6 @@
+- [ ] mathematical functions
+- [ ] min, max, ...
+- [ ] reduction operations
+- [ ] cast, round, floor, ceil
+- [ ] fancy display
+- [ ] iterators
