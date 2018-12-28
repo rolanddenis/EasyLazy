@@ -1,8 +1,8 @@
-#include "core.hpp"
-#include "range.hpp"
-#include "uniform.hpp"
-#include "view.hpp"
-#include "fancy_op.hpp"
+#include "EasyLazy/core.hpp"
+#include "EasyLazy/range.hpp"
+#include "EasyLazy/uniform.hpp"
+#include "EasyLazy/view.hpp"
+#include "EasyLazy/fancy_op.hpp"
 
 int main()
 {
