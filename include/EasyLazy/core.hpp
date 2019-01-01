@@ -209,7 +209,7 @@ struct shape
     template <typename T>
     auto operator() (cst_tag, T) const
     {
-        return std::array<std::size_t, 1>{1};
+        return std::array<std::size_t, 0>{};
     }
 
     /// Shape of an array
@@ -336,5 +336,58 @@ auto make_it_expr(Expr && expr) -> decltype(auto)
         return std::forward<Expr>(expr);
     else
         return cst(std::forward<Expr>(expr));
+}
+
+/// Assign an expression to an array
+template <typename LHS, typename RHS, typename... Coords>
+void assign(LHS && lhs, RHS && rhs, Coords... coords)
+{
+    constexpr std::size_t dim = type_traits::dim_v<LHS> - sizeof...(Coords);
+    if constexpr (dim == 0)
+        std::forward<LHS>(lhs)(visitor::evaluator{coords...}) = make_it_expr(std::forward<RHS>(rhs))(visitor::evaluator{coords...});
+    else
+    {
+        auto const shape = lhs(visitor::shape{});
+        for (std::size_t i = 0; i < shape[sizeof...(Coords)]; ++i)
+            assign(lhs, rhs, coords..., i);
+    }
+}
+
+/// Display of shape
+template <std::size_t N>
+void display(std::ostream & os, std::array<std::size_t, N> const& shape)
+{
+    os << "[";
+    for (std::size_t i = 0; i < N; ++i)
+        os << (i > 0 ? ", " : "") << shape[i];
+    os << "]";
+}
+
+/// Display of an expression
+template <typename Expr, typename... Coords>
+void display(std::ostream & os, Expr && expr, Coords... coords)
+{
+    constexpr std::size_t dim = type_traits::dim_v<Expr> - sizeof...(Coords);
+    [[maybe_unused]] auto const shape = expr(visitor::shape{});
+
+    if constexpr (dim == 0)
+        os << std::forward<Expr>(expr)(visitor::evaluator<sizeof...(Coords)>{coords...});
+    else if constexpr (dim == 1)
+    {
+        os << std::string(2*sizeof...(Coords), ' ') << "[";
+        for (std::size_t i = 0; i < shape[sizeof...(Coords)]; ++i)
+            os << (i == 0 ? "" : " ") << expr(visitor::evaluator<sizeof...(Coords)+1>{coords..., i});
+        os << "]";
+    }
+    else
+    {
+        os << std::string(2*sizeof...(Coords), ' ') << "[" << std::endl;
+        for (std::size_t i = 0; i < shape[sizeof...(Coords)]; ++i)
+        {
+            display(os, expr, coords..., i);
+            os << std::endl;
+        }
+        os << std::string(2*sizeof...(Coords), ' ') << "]";
+    }
 }
 
