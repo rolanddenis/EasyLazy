@@ -16,6 +16,12 @@ auto range(T start, T stop, T step = 1)
     };
 }
 
+template <typename T>
+auto range(T stop)
+{
+    return range(0, stop);
+}
+
 // Extending core visitors
 namespace visitor
 {
