@@ -70,6 +70,17 @@ namespace {
     template <typename Indexes, std::size_t OutDim>
     constexpr std::size_t view_index_pos_from_out_dim_v = view_index_pos_from_out_dim_impl<Indexes, OutDim>(std::make_index_sequence<std::tuple_size_v<Indexes>>{});
 
+    /// Given a dimension from the underlying expression, returns the position of the corresponding view-index.
+    template <typename Indexes, std::size_t InDim, std::size_t... IndexPos>
+    constexpr std::size_t view_index_pos_from_in_dim_impl(std::index_sequence<IndexPos...>)
+    {
+        static_assert(InDim < view_in_dim_v<Indexes>);
+        return ((view_in_cumul_dim_v<Indexes, IndexPos> <= InDim ? 1 : 0) + ... + 0) - 1;
+    }
+
+    template <typename Indexes, std::size_t InDim>
+    constexpr std::size_t view_index_pos_from_in_dim_v = view_index_pos_from_in_dim_impl<Indexes, InDim>(std::make_index_sequence<std::tuple_size_v<Indexes>>{});
+
     /** Shape associated to a view-index
      *
      * It may depend on the input expression shape...
@@ -105,10 +116,15 @@ namespace {
      *
      * Generates the view size along each output dimensions.
      */
-    template <typename Indexes, typename Shapes, std::size_t... OutDim>
-    auto view_shape_dispatch_out_dim(Shapes const& shapes, std::index_sequence<OutDim...>)
+    template <typename Indexes, typename Shapes, std::size_t... OutDim, typename ExprShape, std::size_t... OtherDim>
+    auto view_shape_dispatch_out_dim(Shapes const& shapes, std::index_sequence<OutDim...>, ExprShape const& expr_shape, std::index_sequence<OtherDim...>)
     {
-        return std::array{ view_size_at_dim<Indexes, OutDim>(shapes) ... };
+        [[maybe_unused]] constexpr std::size_t in_dim = view_in_dim_v<Indexes>;
+
+        return std::array<std::size_t, sizeof...(OutDim) + sizeof...(OtherDim)>{
+            view_size_at_dim<Indexes, OutDim>(shapes) ..., // Dimensions from the view
+            std::get<in_dim + OtherDim>(expr_shape) ...    // Remaining dimensions from the underlying expression
+        };
     }
 
     /** Returns the shape of a view
@@ -119,9 +135,15 @@ namespace {
     template <typename ExprShape, typename Indexes, std::size_t... IndexPos>
     auto view_shape_dispatch_index(visitor::shape const& shape_visitor, ExprShape const& expr_shape, Indexes & index, std::index_sequence<IndexPos...>)
     {
+        constexpr std::size_t in_dim    = view_in_dim_v<Indexes>;
+        constexpr std::size_t out_dim   = view_out_dim_v<Indexes>;
+        constexpr std::size_t expr_dim  = std::tuple_size_v<ExprShape>;
+
         return view_shape_dispatch_out_dim<Indexes>(
             std::tuple{ view_index_shape<IndexPos>(shape_visitor, expr_shape, index) ... },
-            std::make_index_sequence<view_out_dim_v<Indexes>>{}
+            std::make_index_sequence<out_dim>{},
+            expr_shape,
+            std::make_index_sequence<expr_dim - std::min(expr_dim, in_dim)>{}
         );
     }
 
@@ -140,12 +162,89 @@ namespace {
         );
     }
 
+    /** Returns the evaluation of a view
+     *
+     * One index evaluation depending on his type:
+     * - for an expression, evaluate it with output coordinates
+     * - for the all placeholder, forward the output coordinate to the underlying expression
+     * - otherwise, for a fixed view coordinate, forward it (i.e. index) to the underlying expression
+     */
+    template <typename Index, typename... Coords>
+    std::size_t view_eval_index_eval(Index & index, Coords... coords)
+    {
+        if constexpr (type_traits::is_expr_v<Index>)
+            return index(visitor::evaluator<sizeof...(Coords)>{coords...});
+        else if constexpr (std::is_same_v<std::decay_t<Index>, all>)
+            return (coords, ...);
+        else // Fixed view
+            return index;
+    }
+
+    /** Returns the evaluation of a view
+     *
+     * Dispatch the output coordinates to one view index.
+     */
+    template <std::size_t IndexPos, std::size_t N, typename Indexes, std::size_t... IndexDim>
+    auto view_eval_dispatch_index_impl(visitor::evaluator<N> const& eval_visitor, Indexes & indexes, std::index_sequence<IndexDim...>)
+    {
+        [[maybe_unused]] constexpr auto index_dim_shift = view_out_cumul_dim_v<Indexes, IndexPos>;
+        return view_eval_index_eval(std::get<IndexPos>(indexes), std::get<index_dim_shift + IndexDim>(eval_visitor.idx)...);
+    }
+
+    /** Returns the evaluation of a view
+     *
+     * Prepare the dispatch of output coordinates to one view index
+     */
+    template <std::size_t IndexPos, std::size_t N, typename Indexes>
+    auto view_eval_dispatch_index(visitor::evaluator<N> const& eval_visitor, Indexes & indexes)
+    {
+        return view_eval_dispatch_index_impl<IndexPos>(
+            eval_visitor,
+            indexes,
+            std::make_index_sequence<view_out_index_dim_v<std::tuple_element_t<IndexPos, Indexes>>>{}
+        );
+    }
+
+    /** Returns the evaluation of a view
+     *
+     * Dispatch the output coordinates to the view indexes
+     */
+    template <std::size_t N, typename Expr, typename Indexes, std::size_t... InDim, std::size_t... OtherDim>
+    decltype(auto) view_eval_dispatch_in_dim(visitor::evaluator<N> const& eval_visitor, Expr && expr, Indexes & indexes, std::index_sequence<InDim...>, std::index_sequence<OtherDim...>)
+    {
+        return std::forward<Expr>(expr)(visitor::evaluator<sizeof...(InDim) + sizeof...(OtherDim)>{
+            view_eval_dispatch_index<view_index_pos_from_in_dim_v<Indexes, InDim>>(eval_visitor, indexes) ...,  // Coordinates from the view
+            std::get<view_out_dim_v<Indexes> + OtherDim>(eval_visitor.idx) ...  // Remaining coordinates forwarded to the underlying expression
+        });
+    }
+
+    /** Returns the evaluation of a view
+     *
+     * Dispatch along input dimensions so that to generate evaluation indexes for underlying expression.
+     */
+    template <std::size_t N, typename Expr, typename Indexes>
+    decltype(auto) view_eval_impl(visitor::evaluator<N> const& eval_visitor, Expr && expr, Indexes & indexes)
+    {
+        constexpr std::size_t in_dim    = view_in_dim_v<Indexes>;
+        constexpr std::size_t expr_dim  = type_traits::dim_v<Expr>;
+
+        return view_eval_dispatch_in_dim(
+            eval_visitor,
+            std::forward<Expr>(expr),
+            indexes,
+            std::make_index_sequence<in_dim>{},
+            std::make_index_sequence<expr_dim - std::min(expr_dim, in_dim)>{}
+        );
+    }
+
 } // anonymous namespace
 
 /// View expression
 template <typename Expr, typename... I>
 auto view(Expr && expr, I &&... idx)
 {
+    static_assert(view_in_dim_v<std::tuple<I...>> <= type_traits::dim_v<Expr>, "Too many view arguments");
+
     return [op = hold_args(std::forward<Expr>(expr)),
             index = hold_args(std::forward<I>(idx)...)]
         (auto && visitor) mutable -> decltype(auto) {
@@ -161,6 +260,16 @@ namespace visitor
     {
         return view_shape_impl(
             shape_visitor,
+            std::forward<Expr>(expr),
+            indexes
+        );
+    }
+
+    template <std::size_t N, typename Expr, typename Indexes>
+    decltype(auto) visit(visitor::evaluator<N> const& eval_visitor, view_tag, Expr && expr, Indexes & indexes)
+    {
+        return view_eval_impl(
+            eval_visitor,
             std::forward<Expr>(expr),
             indexes
         );
