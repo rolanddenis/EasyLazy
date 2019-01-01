@@ -21,13 +21,28 @@ FANCY_BINARY_OP(-, minus)
 FANCY_BINARY_OP(*, multiplies)
 FANCY_BINARY_OP(/, divides)
 
-// Display of a shape
+
+/// Display of an expression
+template <typename Expr, typename = std::enable_if_t<type_traits::is_expr_v<Expr>>>
+std::ostream & operator<< (std::ostream & os, Expr && expr)
+{
+    display(os, expr);
+    return os;
+}
+
+/// Display of a shape
 template <std::size_t N>
 std::ostream & operator<< (std::ostream & os, std::array<std::size_t, N> const& shape)
 {
-    os << "[";
-    for (std::size_t i = 0; i < N; ++i)
-        os << (i > 0 ? ", " : "") << shape[i];
-    os << "]";
+    display(os, shape);
     return os;
 }
+
+/// Assign an expression to an array
+template <typename LHS, typename RHS, typename = std::enable_if_t<type_traits::is_expr_v<LHS>>>
+LHS operator<< (LHS && lhs, RHS && rhs)
+{
+    assign(lhs, std::forward<RHS>(rhs));
+    return std::forward<LHS>(lhs);
+}
+
