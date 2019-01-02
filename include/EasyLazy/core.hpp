@@ -8,6 +8,7 @@
 #include <vector>
 #include <algorithm>
 #include <cassert>
+#include <initializer_list>
 
 ///////////////////////////////////////////////////////////////////////////////
 // Tools
@@ -159,7 +160,7 @@ auto cst(T value)
 /// Array tag
 struct array_tag : expr_tag {};
 
-/// Array expression
+/// Array expression from a given container
 template <typename Container, typename... Sizes>
 auto array(Container && container, Sizes const& ... sizes)
 {
@@ -171,6 +172,12 @@ auto array(Container && container, Sizes const& ... sizes)
            };
 }
 
+/// Array expression from a given initializer list (stored in a std::vector)
+template <typename T, typename... Sizes>
+auto array(std::initializer_list<T> data, Sizes const& ... sizes)
+{
+    return array(std::vector<T>(data), sizes...);
+}
 
 /// Operations tag
 struct op_tag : expr_tag {};
