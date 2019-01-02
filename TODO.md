@@ -5,3 +5,4 @@
 - [ ] iterators
 - [ ] refactor namespaces
 - [ ] array construction from nested initializer_list
+- [ ] transforming expression with a lambda
