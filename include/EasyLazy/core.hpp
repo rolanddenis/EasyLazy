@@ -359,6 +359,10 @@ constexpr std::size_t dim(Expr &&)
     return dim_v<Expr>;
 }
 
+/// Value type of an expression
+template <typename Expr>
+using value_t = std::decay_t<decltype(std::declval<Expr>()(visitor::evaluator<dim_v<Expr>>{}))>;
+
 } // type_traits
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -388,6 +392,25 @@ void assign(LHS && lhs, RHS && rhs, Coords... coords)
         for (std::size_t i = 0; i < shape[sizeof...(Coords)]; ++i)
             assign(lhs, rhs, coords..., i);
     }
+}
+
+/// Array expression from a container initialized with another expression
+template <typename Container, typename Expr, typename = std::enable_if_t<type_traits::is_expr_v<Expr>>>
+auto array(Container && container, Expr && expr)
+{
+    auto A = array(std::forward<Container>(container), expr(visitor::shape{}));
+    assign(A, std::forward<Expr>(expr));
+    return A;
+}
+
+/// Array expression initialized with another expression
+template <typename Expr, typename = std::enable_if_t<type_traits::is_expr_v<Expr>>>
+auto array(Expr && expr)
+{
+    return array(
+        std::vector<type_traits::value_t<Expr>>{},
+        std::forward<Expr>(expr)
+    );
 }
 
 /// Display of shape
