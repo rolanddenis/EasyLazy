@@ -182,25 +182,34 @@ auto cst(T value)
 /// Array tag
 struct array_tag : expr_tag {};
 
-/// Array expression from a given container
-template <typename Container, typename... Sizes>
-auto array(Container && container, Sizes const& ... sizes)
+/// Array expression from a given container (shape as array)
+template <typename Container, std::size_t N>
+auto array(Container && container, std::array<std::size_t, N> const& shape)
 {
-    resize_array(container, shape_to_size(sizes...)); // Try to resize the container if it is too small
-    assert(check_array_size(container, shape_to_size(sizes...)) && "Container is too small for given shape");
+    resize_array(container, shape_to_size(shape)); // Try to resize the container if it is too small
+    assert(check_array_size(container, shape_to_size(shape)) && "Container is too small for given shape");
 
-    return [op = hold_args(std::forward<Container>(container)),
-            shape = std::array<std::size_t, sizeof...(Sizes)>{static_cast<std::size_t>(sizes)...}]
+    return [op = hold_args(std::forward<Container>(container)), shape]
            (auto && visitor) mutable -> decltype(auto) {
                return std::forward<decltype(visitor)>(visitor)(array_tag{}, std::get<0>(op), shape);
            };
 }
 
-/// Array expression from a given initializer list (stored in a std::vector)
-template <typename T, typename... Sizes>
-auto array(std::initializer_list<T> data, Sizes const& ... sizes)
+/// Array expression from a given container (shape as arguments)
+template <typename Container, typename... Sizes>
+auto array(Container && container, Sizes const& ... sizes)
 {
-    return array(std::vector<T>(data), sizes...);
+    return array(
+        std::forward<Container>(container),
+        std::array<std::size_t, sizeof...(Sizes)>{static_cast<std::size_t>(sizes)...}
+    );
+}
+
+/// Array expression from a given initializer list (stored in a std::vector)
+template <typename T, typename... Args>
+auto array(std::initializer_list<T> data, Args &&... args)
+{
+    return array(std::vector<T>(data), std::forward<Args>(args)...);
 }
 
 /// Operations tag
