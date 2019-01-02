@@ -2,5 +2,6 @@
 - [ ] min, max, ...
 - [ ] reduction operations
 - [ ] cast, round, floor, ceil
-- [ ] fancy display
 - [ ] iterators
+- [ ] refactor namespaces
+- [ ] array construction from nested initializer_list
