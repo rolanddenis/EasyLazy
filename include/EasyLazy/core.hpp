@@ -424,7 +424,7 @@ void display(std::ostream & os, std::array<std::size_t, N> const& shape)
 }
 
 /// Display of an expression
-template <typename Expr, typename... Coords>
+template <typename Expr, typename... Coords, typename = std::enable_if_t<type_traits::is_expr_v<Expr>>>
 void display(std::ostream & os, Expr && expr, Coords... coords)
 {
     constexpr std::size_t dim = type_traits::dim_v<Expr> - sizeof...(Coords);
