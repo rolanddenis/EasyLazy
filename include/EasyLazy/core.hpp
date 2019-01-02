@@ -137,6 +137,28 @@ bool check_array_size(Container const& container, std::size_t expected_size)
     return check_array_size_impl(container, expected_size, int(0));
 }
 
+namespace {
+    template <typename Container>
+    auto resize_array_impl(Container & container, std::size_t size, int)
+        -> decltype(std::size(container), container.resize(size), void())
+    {
+        if (std::size(container) < size)
+            container.resize(size);
+    }
+
+    template <typename Container>
+    void resize_array_impl(Container &, std::size_t, double)
+    {
+    }
+} // namespace
+
+/// Try to resize a container to a given size
+template <typename Container>
+void resize_array(Container & container, std::size_t size)
+{
+    resize_array_impl(container, size, int(0));
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // Expression nodes
 ///////////////////////////////////////////////////////////////////////////////
@@ -164,7 +186,9 @@ struct array_tag : expr_tag {};
 template <typename Container, typename... Sizes>
 auto array(Container && container, Sizes const& ... sizes)
 {
+    resize_array(container, shape_to_size(sizes...)); // Try to resize the container if it is too small
     assert(check_array_size(container, shape_to_size(sizes...)) && "Container is too small for given shape");
+
     return [op = hold_args(std::forward<Container>(container)),
             shape = std::array<std::size_t, sizeof...(Sizes)>{static_cast<std::size_t>(sizes)...}]
            (auto && visitor) mutable -> decltype(auto) {
@@ -199,9 +223,6 @@ BINARY_OP(plus,         plus_tag)
 BINARY_OP(minus,        minus_tag)
 BINARY_OP(multiplies,   multiplies_tag)
 BINARY_OP(divides,      divides_tag)
-// TODO: pow, sqrt, max, min, ...
-// TODO: cast, round, floor, ...
-
 
 ///////////////////////////////////////////////////////////////////////////////
 // Visitors
