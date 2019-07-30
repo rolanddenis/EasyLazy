@@ -28,7 +28,7 @@ namespace visitor
     template <typename T>
     auto visit(visitor::shape const&, range_tag, T start, T stop, T step)
     {
-        return std::array{std::max<std::size_t>(0, (stop-start-1)/step)}; 
+        return std::array{std::max<std::size_t>(0, (stop-start)/step)};
     }
 
     template <std::size_t N, typename T>
