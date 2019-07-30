@@ -20,16 +20,6 @@ int main()
     auto expr = array_u * array(std::array{2, 3}, 2, 1) + 1.5;
     auto shape = expr(visitor::shape{});
     std::cout << "Shape of the expression = " << shape << std::endl;
-    // TODO: streaming array
-    std::cout << "Expr = [";
-    for (std::size_t i = 0; i < shape[0]; ++i)
-    {
-        std::cout << "[";
-        for (std::size_t j = 0; j < shape[1]; ++j)
-            std::cout << expr(visitor::evaluator{i, j}) << (j < shape[1]-1 ? ", " : "");
-        std::cout << "]" << (i < shape[0]-1 ? ", " : "");
-    }
-    std::cout << "]" << std::endl;
-
+    std::cout << "Expr = " << expr << std::endl;
     return 0;
 }
