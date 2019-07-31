@@ -199,10 +199,13 @@ auto array(Container && container, std::array<std::size_t, N> const& shape)
 template <typename Container, typename... Sizes>
 auto array(Container && container, Sizes const& ... sizes)
 {
-    return array(
-        std::forward<Container>(container),
-        std::array<std::size_t, sizeof...(Sizes)>{static_cast<std::size_t>(sizes)...}
-    );
+    if constexpr (sizeof...(Sizes) == 0)
+        return array(std::forward<Container>(container), std::size(container));
+    else
+        return array(
+            std::forward<Container>(container),
+            std::array<std::size_t, sizeof...(Sizes)>{static_cast<std::size_t>(sizes)...}
+        );
 }
 
 /// Array expression from a given initializer list (stored in a std::vector)
