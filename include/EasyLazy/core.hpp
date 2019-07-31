@@ -382,19 +382,38 @@ auto make_it_expr(Expr && expr) -> decltype(auto)
         return cst(std::forward<Expr>(expr));
 }
 
-/// Assign an expression to an array
-template <typename LHS, typename RHS, typename... Coords>
-void assign(LHS && lhs, RHS && rhs, Coords... coords)
+namespace
 {
-    constexpr std::size_t dim = type_traits::dim_v<LHS> - sizeof...(Coords);
-    if constexpr (dim == 0)
-        std::forward<LHS>(lhs)(visitor::evaluator{coords...}) = make_it_expr(std::forward<RHS>(rhs))(visitor::evaluator{coords...});
-    else
+    /// Apply a function component-wise to the given expressions using broadcasting rules (implementation)
+    template <typename Function, typename Shape, typename Args, std::size_t... I, typename... Coords>
+    void apply_impl(Function && function, Shape const& shape, Args && args, std::index_sequence<I...>, Coords... coords)
     {
-        auto const shape = lhs(visitor::shape{});
-        for (std::size_t i = 0; i < shape[sizeof...(Coords)]; ++i)
-            assign(lhs, rhs, coords..., i);
+        constexpr std::size_t dim = std::tuple_size_v<Shape> - sizeof...(Coords);
+        if constexpr (dim == 0)
+            std::forward<Function>(function)(std::get<I>(args)(visitor::evaluator{coords...})...);
+        else
+        {
+            for (std::size_t i = 0; i < shape[sizeof...(Coords)]; ++i)
+              apply_impl(function, shape, args, std::index_sequence<I...>{}, coords..., i);
+        }
     }
+}
+
+/// Apply a function component-wise to the given expressions using broadcasting rules.
+template <typename Function, typename... Args>
+void apply(Function && function, Args &&... args)
+{
+    const auto shape = broadcast_shape(make_it_expr(args)(visitor::shape{})...);
+    apply_impl(std::forward<Function>(function), shape, hold_args(make_it_expr(std::forward<Args>(args))...), std::make_index_sequence<sizeof...(Args)>{});
+}
+
+/// Assign an expression to an array
+template <typename LHS, typename RHS>
+void assign(LHS && lhs, RHS && rhs)
+{
+   assert(broadcast_shape(lhs(visitor::shape{}), make_it_expr(rhs)(visitor::shape{})) == lhs(visitor::shape{})
+          && "Assigned expression must have same shape as the broadcasted shape of the two terms");
+   apply([] (auto && l, auto && r) { std::forward<decltype(l)>(l) = std::forward<decltype(r)>(r); }, std::forward<LHS>(lhs), std::forward<RHS>(rhs));
 }
 
 /// Array expression from a container initialized with another expression
