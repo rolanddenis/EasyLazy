@@ -1,5 +1,7 @@
 set(TESTS_FILES
   draft
+  test_core
+  test_range
 )
 
 foreach(FILE ${TESTS_FILES})
