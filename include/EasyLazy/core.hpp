@@ -101,6 +101,16 @@ auto broadcast_shape(std::tuple<Shapes...> const& shapes)
     return broadcast_shape_impl(shapes, std::make_index_sequence<sizeof...(Shapes)>{});
 }
 
+/// Check if given shapes are equals
+template <std::size_t N, std::size_t... NOther>
+bool shape_equal(std::array<std::size_t, N> const& lhs, std::array<std::size_t, NOther> const&... rhs)
+{
+    if constexpr ((... && (N == NOther)))
+        return (... && (lhs == rhs));
+    else
+        return false;
+}
+
 /// Calculate position in container from nD index
 template <std::size_t NS, std::size_t NI>
 std::size_t idx_to_pos(std::array<std::size_t, NS> const& shape, std::array<std::size_t, NI> const& idx)
@@ -414,6 +424,27 @@ void assign(LHS && lhs, RHS && rhs)
    assert(broadcast_shape(lhs(visitor::shape{}), make_it_expr(rhs)(visitor::shape{})) == lhs(visitor::shape{})
           && "Assigned expression must have same shape as the broadcasted shape of the two terms");
    apply([] (auto && l, auto && r) { std::forward<decltype(l)>(l) = std::forward<decltype(r)>(r); }, std::forward<LHS>(lhs), std::forward<RHS>(rhs));
+}
+
+/** Check array equality between expressions using broadcasting.
+ *
+ * @note Could also be implemented using reduction operations like all(is_equal(lhs, rhs...))
+ */
+template <typename LHS, typename... RHS>
+bool array_equal_equiv(LHS && lhs, RHS &&... rhs)
+{
+    bool result = true;
+    apply([&result] (auto && l, auto &&... r) { result &= (... && (std::forward<decltype(l)>(l) == std::forward<decltype(r)>(r))); }, std::forward<LHS>(lhs), std::forward<RHS>(rhs)...);
+    return result;
+}
+
+/// Check that expressions have same shape and same values
+template <typename LHS, typename... RHS>
+bool array_equal(LHS && lhs, RHS &&... rhs)
+{
+    using visitor::shape;
+    bool result = shape_equal(make_it_expr(lhs)(shape{}), make_it_expr(rhs)(shape{})...);
+    return result && array_equal_equiv(std::forward<LHS>(lhs), std::forward<RHS>(rhs)...);
 }
 
 /// Array expression from a container initialized with another expression
