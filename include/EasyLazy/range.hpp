@@ -28,13 +28,16 @@ namespace visitor
     template <typename T>
     auto visit(visitor::shape const&, range_tag, T start, T stop, T step)
     {
-        return std::array{std::max<std::size_t>(0, (stop-start)/step)};
+        if constexpr (std::is_signed_v<T>)
+            return std::array{static_cast<std::size_t>(std::max(T(0), T(1) + (stop - start - T(step > 0) + T(step < 0))/step))};
+        else
+            return std::array{static_cast<std::size_t>(std::max(T(0), T(1) + (stop - start - T(1))/step))};
     }
 
     template <std::size_t N, typename T>
     auto visit(visitor::evaluator<N> const& e, range_tag, T start, T, T step)
     {
-        return start + (N > 0 ? e.idx[0] : 0)*step;
+        return start + (N > 0 ? T(e.idx[0]) : 0)*step;
     }
 } // namespace visitor
 
