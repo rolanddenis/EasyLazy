@@ -111,7 +111,7 @@ bool shape_equal(std::array<std::size_t, N> const& lhs, std::array<std::size_t, 
         return false;
 }
 
-/// Calculate position in container from nD index
+/// Calculate position in container from nD index with respect to the broadcasting rules
 template <std::size_t NS, std::size_t NI>
 std::size_t idx_to_pos(std::array<std::size_t, NS> const& shape, std::array<std::size_t, NI> const& idx)
 {
@@ -126,6 +126,7 @@ std::size_t idx_to_pos(std::array<std::size_t, NS> const& shape, std::array<std:
 }
 
 namespace {
+    /// Check that given container has a minimal size (when std::size is available)
     template <typename Container>
     auto check_array_size_impl(Container const& container, std::size_t expected_size, int)
         -> decltype(std::size(container), true)
@@ -133,6 +134,7 @@ namespace {
         return std::size(container) >= expected_size;
     }
 
+    /// Check that given container has a minimal size (fallback)
     template <typename Container>
     bool check_array_size_impl(Container const&, std::size_t, double)
     {
@@ -140,7 +142,7 @@ namespace {
     }
 }
 
-/// Check that given container has a minimal size (if possible)
+/// Check that given container has a minimal size (if possible, returns true otherwise)
 template <typename Container>
 bool check_array_size(Container const& container, std::size_t expected_size)
 {
@@ -148,6 +150,7 @@ bool check_array_size(Container const& container, std::size_t expected_size)
 }
 
 namespace {
+    /// Try to resize a container to a given size (when std::size and .resize are available)
     template <typename Container>
     auto resize_array_impl(Container & container, std::size_t size, int)
         -> decltype(std::size(container), container.resize(size), void())
@@ -156,13 +159,14 @@ namespace {
             container.resize(size);
     }
 
+    /// Try to resize a container to a given size (fallback)
     template <typename Container>
     void resize_array_impl(Container &, std::size_t, double)
     {
     }
 } // namespace
 
-/// Try to resize a container to a given size
+/// Try to resize a container to a given size (do nothing if not possible)
 template <typename Container>
 void resize_array(Container & container, std::size_t size)
 {
@@ -269,7 +273,7 @@ struct shape
         return s;
     }
 
-    /// Shape of the result of an operation
+    /// Shape of the result of a component-wise operation
     template <typename Args>
     auto operator() (op_tag, Args const& shapes) const
     {
