@@ -83,7 +83,7 @@ namespace {
 template <std::size_t... N>
 auto broadcast_shape(std::array<std::size_t, N> const&... shapes)
 {
-    return broadcast_shape_impl(std::make_index_sequence<std::max({N...})>{}, shapes...);
+    return broadcast_shape_impl(std::make_index_sequence<std::max({std::size_t(0), N...})>{}, shapes...);
 }
 
 namespace {
