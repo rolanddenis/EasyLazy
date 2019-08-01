@@ -2,6 +2,7 @@ set(TESTS_FILES
   draft
   test_core
   test_range
+  test_map
 )
 
 foreach(FILE ${TESTS_FILES})
