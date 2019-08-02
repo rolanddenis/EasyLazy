@@ -41,5 +41,12 @@ int main()
         CHECK( array_equal(r, r_ref) );
     }
 
+    {
+        auto r = range(-1, 4, 2) * array({1, 2}, 1, 2);
+        auto r_ref = array({-1, 1, 3}) * array({1, 2}, 1, 2);
+        std::cout << "r = " << r << std::endl;
+        CHECK( array_equal(r, r_ref) );
+    }
+
     return return_code();
 }

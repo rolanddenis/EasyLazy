@@ -3,6 +3,8 @@ set(TESTS_FILES
   test_core
   test_range
   test_map
+  test_broadcast
+  test_uniform
 )
 
 foreach(FILE ${TESTS_FILES})

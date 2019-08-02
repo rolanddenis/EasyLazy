@@ -1,43 +1,39 @@
+/** Range expression
+ */
+
 #pragma once
 
 #include "core.hpp"
+#include "broadcast.hpp"
+#include "map.hpp"
 
-/// Range tag
-struct range_tag : expr_tag {};
-
-/// Range expression
+/// Range expression from start, stop (not reached) and optionally the step
 template <typename T>
 auto range(T start, T stop, T step = 1)
 {
     static_assert(std::is_integral<T>::value, "Range must have integer value type");
-    return [=] (auto && visitor) -> decltype(auto)
-    {
-        return std::forward<decltype(visitor)>(visitor)(range_tag{}, start, stop, step);
-    };
+
+    std::size_t size;
+    if constexpr (std::is_signed_v<T>)
+        size = std::max(T(0), T(1) + (stop - start - T(step > 0) + T(step < 0))/step);
+    else
+        size = std::max(T(0), T(1) + (stop - start - T(1))/step);
+
+    return broadcast(
+        map_with_idx(
+            [start, step] (auto idx)
+            {
+                return start + (std::size(idx) > 0 ? T(idx[0]) : 0)*step;
+            }
+        ),
+        size
+    );
 }
 
+/// Range expression from 0 to stop (not reached)
 template <typename T>
 auto range(T stop)
 {
-    return range(0, stop);
+    return range(T(0), stop);
 }
-
-// Extending core visitors
-namespace visitor
-{
-    template <typename T>
-    auto visit(visitor::shape const&, range_tag, T start, T stop, T step)
-    {
-        if constexpr (std::is_signed_v<T>)
-            return std::array{static_cast<std::size_t>(std::max(T(0), T(1) + (stop - start - T(step > 0) + T(step < 0))/step))};
-        else
-            return std::array{static_cast<std::size_t>(std::max(T(0), T(1) + (stop - start - T(1))/step))};
-    }
-
-    template <std::size_t N, typename T>
-    auto visit(visitor::evaluator<N> const& e, range_tag, T start, T, T step)
-    {
-        return start + (N > 0 ? T(e.idx[0]) : 0)*step;
-    }
-} // namespace visitor
 
