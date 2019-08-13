@@ -13,7 +13,7 @@ template <typename Function, typename... Expr>
 auto map_with_idx(Function && function, Expr &&... expr)
 {
     return
-        [fn = std::forward<Function>(function), operands = hold_args(std::forward<Expr>(expr)...)]
+        [fn = std::forward<Function>(function), operands = hold_args(make_it_expr(std::forward<Expr>(expr))...)]
         (auto && visitor) mutable -> decltype(auto)
         {
             return std::forward<decltype(visitor)>(visitor)(map_tag{}, fn, dispatch_visitor(visitor, operands));
