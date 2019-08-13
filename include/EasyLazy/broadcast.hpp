@@ -5,13 +5,14 @@
 #pragma once
 
 #include "core.hpp"
+#include "map.hpp"
 
 /// Broadcast tag
 struct broadcast_tag : expr_tag {};
 
-/// Broadcast expression
+/// Broadcast expression to given shape
 template <typename Expr, typename... Sizes>
-auto broadcast(Expr && expression, Sizes const&... sizes)
+auto broadcast_to(Expr && expression, Sizes const&... sizes)
 {
     return
         [ expr = make_it_expr(std::forward<Expr>(expression)),
@@ -21,6 +22,13 @@ auto broadcast(Expr && expression, Sizes const&... sizes)
         {
             return std::forward<decltype(visitor)>(visitor)(broadcast_tag{}, expr, shape);
         };
+}
+
+/// Broadcast multiple expressions
+template <typename... Expr>
+auto broadcast(Expr &&... expressions)
+{
+    return map([] (auto &&... v) { return std::make_tuple(std::forward<decltype(v)>(v)...); }, std::forward<Expr>(expressions)...);
 }
 
 // Extending core visitors

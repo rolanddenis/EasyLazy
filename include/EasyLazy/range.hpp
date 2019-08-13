@@ -19,7 +19,7 @@ auto range(T start, T stop, T step = 1)
     else
         size = std::max(T(0), T(1) + (stop - start - T(1))/step);
 
-    return broadcast(
+    return broadcast_to(
         map_with_idx(
             [start, step] (auto idx)
             {

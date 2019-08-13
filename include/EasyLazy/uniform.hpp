@@ -9,7 +9,7 @@
 template <typename T, typename... Sizes>
 auto uniform(T && value, Sizes const&... sizes)
 {
-    return broadcast(std::forward<T>(value), sizes...);
+    return broadcast_to(std::forward<T>(value), sizes...);
 }
 
 /// Array filled with zeros
