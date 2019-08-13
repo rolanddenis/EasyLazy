@@ -27,6 +27,22 @@ int main()
         CHECK( array_equal(r, r_ref) );
     }
 
+    {
+        auto r = zeros<double>(2, 3);
+        double v = 0.;
+        auto r_ref = array({v, v, v, v, v, v}, 2, 3);
+        std::cout << r << std::endl;
+        CHECK( array_equal(r, r_ref) );
+    }
+
+    {
+        auto r = ones<double>(2, 3);
+        double v = 1.;
+        auto r_ref = array({v, v, v, v, v, v}, 2, 3);
+        std::cout << r << std::endl;
+        CHECK( array_equal(r, r_ref) );
+    }
+
     return return_code();
 }
 
